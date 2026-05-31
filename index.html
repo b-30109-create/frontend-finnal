@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DeepScan — Deepfake Detector</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;500;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --card: #1a1a26;
+    --border: #2a2a3d;
+    --accent: #7c5cfc;
+    --accent2: #fc5c7d;
+    --text: #f0eeff;
+    --muted: #8884a8;
+    --real: #3ddc97;
+    --fake: #fc5c7d;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Grid bg ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(124,92,252,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,92,252,.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .glow {
+    position: fixed;
+    width: 600px; height: 600px;
+    border-radius: 50%;
+    filter: blur(120px);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .glow-1 { background: rgba(124,92,252,.12); top: -200px; right: -100px; }
+  .glow-2 { background: rgba(252,92,125,.08); bottom: -200px; left: -100px; }
+
+  .wrap {
+    position: relative; z-index: 1;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 3rem 1.5rem 6rem;
+  }
+
+  /* ── Header ── */
+  header { text-align: center; margin-bottom: 3.5rem; }
+
+  .logo-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(124,92,252,.15);
+    border: 1px solid rgba(124,92,252,.3);
+    border-radius: 99px;
+    padding: 6px 16px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: #c4b5fd;
+    letter-spacing: .08em;
+    margin-bottom: 1.5rem;
+  }
+  .logo-chip span { width:7px; height:7px; border-radius:50%; background:#7c5cfc; animation: pulse 2s infinite; }
+
+  h1 {
+    font-size: clamp(2.4rem, 6vw, 4rem);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -.02em;
+    background: linear-gradient(135deg, #f0eeff 0%, #c4b5fd 50%, #fc5c7d 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: .75rem;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 1.1rem;
+    font-weight: 400;
+    max-width: 480px;
+    margin: 0 auto;
+    line-height: 1.6;
+  }
+
+  /* ── API config bar ── */
+  .api-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    margin-bottom: 2rem;
+    display: flex; align-items: center; gap: 12px;
+    flex-wrap: wrap;
+  }
+  .api-bar label { font-size:13px; color:var(--muted); font-family:'Space Mono',monospace; white-space:nowrap; }
+  .api-bar input {
+    flex: 1; min-width: 260px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px;
+    color: var(--text); font-family: 'Space Mono', monospace; font-size: 13px;
+    outline: none; transition: border .2s;
+  }
+  .api-bar input:focus { border-color: var(--accent); }
+  .dot-status { width:8px; height:8px; border-radius:50%; background:#888; transition:background .3s; margin-left:auto; }
+  .dot-status.ok { background: var(--real); }
+  .dot-status.err { background: var(--fake); }
+
+  /* ── Form card ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .section-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: .12em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 1.25rem;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-label::after { content:''; flex:1; height:1px; background:var(--border); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+
+  @media(max-width:600px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  }
+
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 12px; color: var(--muted); font-weight: 500; letter-spacing:.04em; }
+
+  .field select,
+  .field input[type="number"] {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    outline: none;
+    transition: border .2s, box-shadow .2s;
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+  }
+  .field select:focus,
+  .field input[type="number"]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(124,92,252,.15);
+  }
+  .select-wrap { position: relative; }
+  .select-wrap::after {
+    content: '▾';
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); pointer-events: none; font-size: 12px;
+  }
+
+  /* slider */
+  .slider-row { display:flex; flex-direction:column; gap:6px; }
+  .slider-row label { font-size:12px; color:var(--muted); font-weight:500; letter-spacing:.04em; display:flex; justify-content:space-between; }
+  .slider-row label span { color:var(--text); font-family:'Space Mono',monospace; font-size:12px; }
+  input[type=range] {
+    -webkit-appearance:none; width:100%; height:4px;
+    background: var(--border); border-radius:99px; outline:none; cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:16px; height:16px; border-radius:50%;
+    background:var(--accent); cursor:pointer; border:2px solid var(--bg);
+    transition:background .2s;
+  }
+  input[type=range]:focus::-webkit-slider-thumb { background:#a78bfa; }
+
+  /* ── Submit btn ── */
+  .btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%;
+    background: linear-gradient(135deg, var(--accent), #a855f7);
+    border: none; border-radius: 12px;
+    padding: 16px;
+    color: #fff; font-family: 'Syne', sans-serif; font-size: 1rem; font-weight: 700;
+    cursor: pointer; letter-spacing: .04em;
+    transition: opacity .2s, transform .1s;
+    margin-top: .5rem;
+  }
+  .btn:hover { opacity: .9; }
+  .btn:active { transform: scale(.98); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+  /* ── Result panel ── */
+  #result-panel { display:none; }
+
+  .result-hero {
+    border-radius: 18px;
+    border: 1px solid;
+    padding: 2rem;
+    text-align: center;
+    margin-bottom: 1.5rem;
+    position: relative; overflow: hidden;
+  }
+  .result-hero.real {
+    background: rgba(61,220,151,.06);
+    border-color: rgba(61,220,151,.3);
+  }
+  .result-hero.fake {
+    background: rgba(252,92,125,.06);
+    border-color: rgba(252,92,125,.3);
+  }
+  .verdict-badge {
+    display: inline-block;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px; letter-spacing: .15em;
+    padding: 4px 14px; border-radius: 99px;
+    margin-bottom: 1rem;
+  }
+  .real .verdict-badge { background:rgba(61,220,151,.15); color:var(--real); }
+  .fake .verdict-badge { background:rgba(252,92,125,.15); color:var(--fake); }
+
+  .verdict-label {
+    font-size: clamp(3rem, 10vw, 5rem);
+    font-weight: 800; letter-spacing: -.03em;
+    line-height: 1;
+    margin-bottom: .5rem;
+  }
+  .real .verdict-label { color: var(--real); }
+  .fake .verdict-label { color: var(--fake); }
+
+  .confidence-text {
+    font-family: 'Space Mono', monospace;
+    font-size: 14px; color: var(--muted);
+  }
+
+  /* probability bar */
+  .prob-bars { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .prob-bar-card {
+    background: var(--surface); border:1px solid var(--border);
+    border-radius: 12px; padding: 14px;
+  }
+  .prob-bar-label { font-size:12px; color:var(--muted); margin-bottom:8px; font-weight:500; }
+  .prob-bar-value {
+    font-size:22px; font-weight:800;
+    font-family:'Space Mono', monospace;
+    margin-bottom:10px;
+  }
+  .bar-track { height:6px; background:var(--border); border-radius:99px; overflow:hidden; }
+  .bar-fill { height:100%; border-radius:99px; transition:width .8s cubic-bezier(.22,1,.36,1); }
+  .bar-fill.real { background:var(--real); }
+  .bar-fill.fake { background:var(--fake); }
+
+  /* spinner */
+  .spinner {
+    width:20px; height:20px; border-radius:50%;
+    border:2px solid rgba(255,255,255,.3);
+    border-top-color:#fff;
+    animation: spin .7s linear infinite;
+    display:none;
+  }
+  .btn.loading .btn-text { display:none; }
+  .btn.loading .spinner { display:block; }
+
+  /* error toast */
+  #error-msg {
+    background:rgba(252,92,125,.1); border:1px solid rgba(252,92,125,.3);
+    border-radius:10px; padding:12px 16px;
+    color:var(--fake); font-size:14px; font-family:'Space Mono',monospace;
+    margin-bottom:1rem; display:none;
+  }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  @keyframes spin  { to{transform:rotate(360deg)} }
+  @keyframes fadeUp {
+    from{opacity:0; transform:translateY(16px)}
+    to{opacity:1; transform:none}
+  }
+  .fade-up { animation: fadeUp .5s ease both; }
+</style>
+</head>
+<body>
+<div class="glow glow-1"></div>
+<div class="glow glow-2"></div>
+
+<div class="wrap">
+  <!-- Header -->
+  <header>
+    <div class="logo-chip"><span></span> AI FORENSICS TOOL</div>
+    <h1>DeepScan</h1>
+    <p class="subtitle">Submit media metadata to detect whether content is authentic or AI-generated.</p>
+  </header>
+
+  <!-- API URL bar -->
+  <div class="api-bar">
+    <label>BACKEND URL</label>
+    <input type="text" id="api-url" value="https://your-backend.onrender.com" placeholder="https://your-backend.onrender.com" />
+    <div class="dot-status" id="status-dot" title="Connection status"></div>
+  </div>
+
+  <!-- Error msg -->
+  <div id="error-msg"></div>
+
+  <!-- Form -->
+  <div class="card">
+    <div class="section-label">Media Properties</div>
+    <div class="grid-2" style="margin-bottom:14px">
+      <div class="field">
+        <label>Media Type</label>
+        <div class="select-wrap">
+          <select id="media_type">
+            <option>Audio</option><option selected>Image</option><option>Video</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Content Category</label>
+        <div class="select-wrap">
+          <select id="content_category">
+            <option>Entertainment</option><option>Interview</option>
+            <option selected>News</option><option>Political Speech</option><option>Social Media</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Source Platform</label>
+        <div class="select-wrap">
+          <select id="source_platform">
+            <option selected>Facebook</option><option>Instagram</option>
+            <option>News Website</option><option>TikTok</option>
+            <option>Twitter</option><option>YouTube</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Generation Method</label>
+        <div class="select-wrap">
+          <select id="generation_method">
+            <option>Diffusion</option><option>FaceSwap</option>
+            <option>GAN</option><option selected>None</option><option>VoiceClone</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-label">Detection Scores</div>
+    <div style="display:flex; flex-direction:column; gap:18px; margin-bottom:18px;">
+      <div class="slider-row">
+        <label>Lip Sync Score <span id="lip_sync_score_val">0.50</span></label>
+        <input type="range" id="lip_sync_score" min="0" max="1" step="0.01" value="0.50"
+               oninput="document.getElementById('lip_sync_score_val').textContent=parseFloat(this.value).toFixed(2)">
+      </div>
+      <div class="slider-row">
+        <label>Visual Artifacts Score <span id="visual_artifacts_score_val">0.50</span></label>
+        <input type="range" id="visual_artifacts_score" min="0" max="1" step="0.01" value="0.50"
+               oninput="document.getElementById('visual_artifacts_score_val').textContent=parseFloat(this.value).toFixed(2)">
+      </div>
+      <div class="slider-row">
+        <label>Compression Level <span id="compression_level_val">0.50</span></label>
+        <input type="range" id="compression_level" min="0" max="1" step="0.01" value="0.50"
+               oninput="document.getElementById('compression_level_val').textContent=parseFloat(this.value).toFixed(2)">
+      </div>
+      <div class="slider-row">
+        <label>Lighting Inconsistency Score <span id="lighting_inconsistency_score_val">0.50</span></label>
+        <input type="range" id="lighting_inconsistency_score" min="0" max="1" step="0.01" value="0.50"
+               oninput="document.getElementById('lighting_inconsistency_score_val').textContent=parseFloat(this.value).toFixed(2)">
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="field">
+        <label>Face Count</label>
+        <input type="number" id="face_count" value="1" min="0" max="20" />
+      </div>
+      <div class="field">
+        <label>Audio Present</label>
+        <div class="select-wrap">
+          <select id="audio_present">
+            <option value="1">Yes</option><option value="0">No</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn" id="predict-btn" onclick="runPrediction()">
+    <span class="btn-text">Analyse Content →</span>
+    <div class="spinner"></div>
+  </button>
+
+  <!-- Result -->
+  <div id="result-panel">
+    <div class="result-hero fade-up" id="result-hero">
+      <div class="verdict-badge" id="verdict-badge">VERDICT</div>
+      <div class="verdict-label" id="verdict-label">—</div>
+      <div class="confidence-text" id="confidence-text">Confidence: —</div>
+    </div>
+    <div class="prob-bars fade-up">
+      <div class="prob-bar-card">
+        <div class="prob-bar-label">✓ Real Probability</div>
+        <div class="prob-bar-value" id="prob-real">—</div>
+        <div class="bar-track"><div class="bar-fill real" id="bar-real" style="width:0%"></div></div>
+      </div>
+      <div class="prob-bar-card">
+        <div class="prob-bar-label">⚠ Fake Probability</div>
+        <div class="prob-bar-value" id="prob-fake">—</div>
+        <div class="bar-track"><div class="bar-fill fake" id="bar-fake" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function runPrediction() {
+  const baseUrl = document.getElementById('api-url').value.replace(/\/$/, '');
+  const btn     = document.getElementById('predict-btn');
+  const errDiv  = document.getElementById('error-msg');
+
+  errDiv.style.display = 'none';
+  btn.disabled = true;
+  btn.classList.add('loading');
+
+  const body = {
+    media_type:                   document.getElementById('media_type').value,
+    content_category:             document.getElementById('content_category').value,
+    face_count:                   parseInt(document.getElementById('face_count').value),
+    audio_present:                parseInt(document.getElementById('audio_present').value),
+    lip_sync_score:               parseFloat(document.getElementById('lip_sync_score').value),
+    visual_artifacts_score:       parseFloat(document.getElementById('visual_artifacts_score').value),
+    compression_level:            parseFloat(document.getElementById('compression_level').value),
+    lighting_inconsistency_score: parseFloat(document.getElementById('lighting_inconsistency_score').value),
+    source_platform:              document.getElementById('source_platform').value,
+    generation_method:            document.getElementById('generation_method').value,
+  };
+
+  try {
+    const res  = await fetch(`${baseUrl}/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    const data = await res.json();
+    showResult(data);
+    document.getElementById('status-dot').className = 'dot-status ok';
+  } catch(e) {
+    errDiv.textContent = '⚠ ' + e.message + ' — check your backend URL above.';
+    errDiv.style.display = 'block';
+    document.getElementById('status-dot').className = 'dot-status err';
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('loading');
+  }
+}
+
+function showResult(data) {
+  const panel  = document.getElementById('result-panel');
+  const hero   = document.getElementById('result-hero');
+  const isFake = data.prediction === 'Fake';
+
+  hero.className = 'result-hero fade-up ' + (isFake ? 'fake' : 'real');
+  document.getElementById('verdict-badge').textContent  = isFake ? '⚠ DEEPFAKE DETECTED' : '✓ AUTHENTIC CONTENT';
+  document.getElementById('verdict-label').textContent  = data.prediction.toUpperCase();
+  document.getElementById('confidence-text').textContent = `Confidence: ${data.confidence}%`;
+  document.getElementById('prob-real').textContent = data.prob_real + '%';
+  document.getElementById('prob-fake').textContent = data.prob_fake + '%';
+
+  panel.style.display = 'block';
+  // Animate bars after slight delay
+  setTimeout(() => {
+    document.getElementById('bar-real').style.width = data.prob_real + '%';
+    document.getElementById('bar-fake').style.width = data.prob_fake + '%';
+  }, 100);
+
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+</script>
+</body>
+</html>
